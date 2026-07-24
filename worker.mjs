@@ -16,7 +16,7 @@ const finish = db.prepare("UPDATE briefs SET status = ?, completed_at = ?, failu
 function slug(value) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "environment"; }
 function research(brief) {
   if (!brief.research_enabled) return [];
-  const script = `import json,os\nfrom open_web_retrieval.client import OpenWebRetrievalClient\nfrom open_web_retrieval.models import SearchQuery\nwith OpenWebRetrievalClient(tavily_api_key=os.environ['TAVILY_API_KEY']) as c:\n hits=c.search(SearchQuery(query=${JSON.stringify(`${brief.topic} ${brief.sources}`)},providers=['tavily'],top_k=5,search_depth='basic'))\nprint(json.dumps([{'id':'web-'+str(i+1),'kind':'website','title':h.title or h.url,'locator':h.url,'authors':[],'accessedAt':__import__('datetime').date.today().isoformat(),'content':h.snippet or h.title or h.url} for i,h in enumerate(hits)]))`;
+  const script = `import json,os\nfrom open_web_retrieval.client import OpenWebRetrievalClient\nfrom open_web_retrieval.models import SearchQuery\nfrom datetime import datetime,timezone\nwith OpenWebRetrievalClient(tavily_api_key=os.environ['TAVILY_API_KEY']) as c:\n hits=c.search(SearchQuery(query=${JSON.stringify(`${brief.topic} ${brief.sources}`)},providers=['tavily'],top_k=5,search_depth='basic'))\nprint(json.dumps([{'id':'web-'+str(i+1),'kind':'website','title':h.title or h.url,'locator':h.url,'authors':[],'accessedAt':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),'content':h.snippet or h.title or h.url} for i,h in enumerate(hits)]))`;
   const result = spawnSync(python, ["-c", script], { encoding: "utf8", env: process.env });
   if (result.status !== 0) throw new Error(`Retrieval failed: ${result.stderr.trim()}`);
   return JSON.parse(result.stdout);
@@ -28,7 +28,7 @@ if (claim.run(new Date().toISOString(), brief.id).changes !== 1) process.exit(0)
 try {
   const sources = research(brief).map((source) => ({ ...source }));
   const cryptoModule = await import("node:crypto");
-  for (const source of sources) source.contentHash = cryptoModule.createHash("sha256").update(source.content).digest("hex");
+  for (const source of sources) source.contentHash = `sha256:${cryptoModule.createHash("sha256").update(source.content).digest("hex")}`;
   const { baselineCurriculumGenerationPolicy, generateCurriculum } = await import(join(packageRoot, "dist/generator.js"));
   const { LlmClientCurriculumAgent } = await import(join(packageRoot, "dist/generators/llm-client.js"));
   const id = `generated-${brief.id}`;
