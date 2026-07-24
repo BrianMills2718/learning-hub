@@ -141,9 +141,10 @@ async function readBody(request) {
 
 function serveStatic(pathname, response) {
   const requestedPath = pathname === "/" ? "index.html" : pathname.slice(1);
-  const filePath = resolve(SITE_ROOT, requestedPath);
+  let filePath = resolve(SITE_ROOT, requestedPath);
   if (relative(SITE_ROOT, filePath).startsWith("..")) return text(response, 403, "Forbidden");
   try {
+    if (statSync(filePath).isDirectory()) filePath = join(filePath, "index.html");
     if (!statSync(filePath).isFile()) return text(response, 404, "Not found");
     response.writeHead(200, {
       "content-type": MIME_TYPES.get(extname(filePath)) ?? "application/octet-stream",

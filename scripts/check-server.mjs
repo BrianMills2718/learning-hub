@@ -36,6 +36,10 @@ async function request(path, options) {
 
 try {
   await waitForHealth();
+  const root = await fetch(`${baseUrl}/`);
+  if (root.status !== 200 || !String(await root.text()).includes("Learning Workspace")) {
+    throw new Error("Root page was not served.");
+  }
   const firstProfile = await request("/api/profiles/Test%20Learner", { method: "PUT" });
   if (firstProfile.status !== 201 || firstProfile.body.shared !== false) throw new Error("First profile claim did not create a new profile.");
 
