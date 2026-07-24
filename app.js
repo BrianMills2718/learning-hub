@@ -178,7 +178,20 @@ function renderBrief(briefId) {
     app.innerHTML = `<div class="draft-view"><a class="button secondary" href="#/">Back to workspace</a><p class="empty">${workspace.loading ? "Loading creation request..." : "Creation request not found on this shared profile."}</p></div>`;
     return;
   }
-  app.innerHTML = `<article class="draft-view"><a class="button secondary" href="#/">Back to workspace</a><header><p class="eyebrow">${escapeHtml(brief.visibility)} - ${escapeHtml(brief.status)}</p><h1>${escapeHtml(brief.title)}</h1><p class="lede">${escapeHtml(brief.topic)}</p></header><dl><dt>Created</dt><dd>${escapeHtml(formatDate(brief.createdAt))}</dd><dt>Starting level</dt><dd>${escapeHtml(brief.level)}</dd><dt>Outcome</dt><dd>${escapeHtml(brief.outcome)}</dd><dt>Sources</dt><dd>${escapeHtml(brief.sources)}</dd><dt>Scope</dt><dd>${escapeHtml(brief.scope)}</dd><dt>Web research</dt><dd>${brief.researchEnabled ? "Requested before compilation" : "Not requested"}</dd></dl></article>`;
+  app.innerHTML = `<article class="draft-view"><a class="button secondary" href="#/">Back to workspace</a><header><p class="eyebrow">${escapeHtml(brief.visibility)} - ${escapeHtml(brief.status)}</p><h1>${escapeHtml(brief.title)}</h1><p class="lede">${escapeHtml(brief.topic)}</p></header><dl><dt>Created</dt><dd>${escapeHtml(formatDate(brief.createdAt))}</dd><dt>Starting level</dt><dd>${escapeHtml(brief.level)}</dd><dt>Outcome</dt><dd>${escapeHtml(brief.outcome)}</dd><dt>Sources</dt><dd>${escapeHtml(brief.sources)}</dd><dt>Scope</dt><dd>${escapeHtml(brief.scope)}</dd><dt>Web research</dt><dd>${brief.researchEnabled ? "Requested before compilation" : "Not requested"}</dd>${brief.failureMessage ? `<dt>Generation result</dt><dd>${escapeHtml(brief.failureMessage)}</dd>` : ""}</dl>${brief.status === "failed" ? '<button type="button" data-retry-brief>Continue generation</button><p class="creation-note" data-retry-message aria-live="polite"></p>' : ""}</article>`;
+  document.querySelector("[data-retry-brief]")?.addEventListener("click", async (event) => {
+    event.currentTarget.disabled = true;
+    const message = document.querySelector("[data-retry-message]");
+    try {
+      const result = await api(`/api/briefs/${encodeURIComponent(brief.id)}/retry`, { method: "POST" });
+      message.textContent = result.resumedFromCheckpoint ? "Continuation queued." : "Generation queued.";
+      await refreshWorkspace();
+      renderBrief(brief.id);
+    } catch (error) {
+      message.textContent = error instanceof Error ? error.message : "Could not continue generation.";
+      event.currentTarget.disabled = false;
+    }
+  });
 }
 
 function render() {
