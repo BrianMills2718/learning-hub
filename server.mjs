@@ -8,6 +8,8 @@ const PORT = Number(process.env.LEARNING_HUB_PORT ?? "8780");
 const SITE_ROOT = resolve(process.env.LEARNING_HUB_SITE_ROOT ?? process.cwd());
 const DATA_ROOT = resolve(process.env.LEARNING_HUB_DATA_ROOT ?? join(process.env.HOME ?? ".", "Library", "Application Support", "learning-hub"));
 const USERNAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9 _-]{0,30}$/;
+const DAILY_CREATION_LIMIT = 3;
+const MAX_PENDING_GENERATIONS = 4;
 const MIME_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
@@ -49,6 +51,12 @@ database.exec(`
     FOREIGN KEY(username) REFERENCES profiles(username)
   );
   CREATE INDEX IF NOT EXISTS briefs_by_username_created_at ON briefs(username, created_at DESC);
+  CREATE TABLE IF NOT EXISTS generation_limits (
+    day TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    count INTEGER NOT NULL,
+    PRIMARY KEY(day, origin)
+  );
 `);
 for (const column of [
   "claimed_at TEXT",
@@ -96,6 +104,12 @@ const retryBrief = database.prepare(`
   UPDATE briefs SET status = 'queued', claimed_at = NULL, completed_at = NULL, failure_message = NULL
   WHERE id = ? AND status = 'failed'
 `);
+const pendingGenerationCount = database.prepare("SELECT COUNT(*) AS count FROM briefs WHERE status IN ('queued', 'generating')");
+const selectGenerationLimit = database.prepare("SELECT count FROM generation_limits WHERE day = ? AND origin = ?");
+const incrementGenerationLimit = database.prepare(`
+  INSERT INTO generation_limits (day, origin, count) VALUES (?, ?, 1)
+  ON CONFLICT(day, origin) DO UPDATE SET count = count + 1
+`);
 
 function json(response, status, body) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -119,6 +133,24 @@ function requiredText(value, field, maximum) {
   const textValue = typeof value === "string" ? value.trim() : "";
   if (!textValue || textValue.length > maximum) throw new Error(`${field} is required and must be at most ${maximum} characters.`);
   return textValue;
+}
+
+function requestOrigin(request) {
+  const forwarded = request.headers["x-forwarded-for"];
+  const candidate = typeof forwarded === "string" ? forwarded.split(",")[0].trim() : request.socket.remoteAddress;
+  return candidate?.slice(0, 128) || "unknown";
+}
+
+function claimGenerationAllowance(request) {
+  if (Number(pendingGenerationCount.get().count) >= MAX_PENDING_GENERATIONS) {
+    throw new Error("Generation queue is full. Please try again shortly.");
+  }
+  const day = new Date().toISOString().slice(0, 10);
+  const origin = requestOrigin(request);
+  if (Number(selectGenerationLimit.get(day, origin)?.count ?? 0) >= DAILY_CREATION_LIMIT) {
+    throw new Error("This network has reached today's creation limit. Please try again tomorrow.");
+  }
+  incrementGenerationLimit.run(day, origin);
 }
 
 function profileResponse(username) {
@@ -265,6 +297,7 @@ async function handleApi(request, response, url) {
     const username = normalizeUsername(input.username);
     const researchEnabled = input.researchEnabled === true;
     if (typeof input.researchEnabled !== "boolean") throw new Error("Research choice is required.");
+    claimGenerationAllowance(request);
     const level = requiredText(input.level, "Starting level", 40);
     const visibility = requiredText(input.visibility, "Visibility", 40);
     const now = new Date().toISOString();
