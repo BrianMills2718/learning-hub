@@ -21,6 +21,11 @@ const next = db.prepare("SELECT * FROM briefs WHERE status = 'queued' ORDER BY c
 const finish = db.prepare("UPDATE briefs SET status = ?, completed_at = ?, failure_message = ?, artifact_path = ?, report_path = ?, checkpoint_path = ? WHERE id = ?");
 
 function slug(value) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "environment"; }
+function errorDetail(error) {
+  if (!(error instanceof Error)) return "Worker failure.";
+  const cause = error.cause instanceof Error ? ` Cause: ${error.cause.message}` : "";
+  return `${error.message}${cause}`.slice(0, 2_000);
+}
 function research(brief) {
   if (!brief.research_enabled) return [];
   const script = `import json,os\nfrom open_web_retrieval.client import OpenWebRetrievalClient\nfrom open_web_retrieval.models import SearchQuery\nfrom datetime import datetime,timezone\nwith OpenWebRetrievalClient(tavily_api_key=os.environ['TAVILY_API_KEY']) as c:\n hits=c.search(SearchQuery(query=${JSON.stringify(`${brief.topic} ${brief.sources}`)},providers=['tavily'],top_k=5,search_depth='basic'))\nprint(json.dumps([{'id':'web-'+str(i+1),'kind':'website','title':h.title or h.url,'locator':h.url,'authors':[],'accessedAt':datetime.now(timezone.utc).isoformat().replace('+00:00','Z'),'content':h.snippet or h.title or h.url} for i,h in enumerate(hits)]))`;
@@ -63,6 +68,6 @@ try {
 } catch (error) {
   const output = join(dataRoot, "artifacts", brief.id);
   const checkpointPath = join(output, "candidate-checkpoint.json");
-  finish.run("failed", new Date().toISOString(), error instanceof Error ? error.message.slice(0, 2000) : "Worker failure.", null, join(output, "report.json"), existsSync(checkpointPath) ? checkpointPath : null, brief.id);
+  finish.run("failed", new Date().toISOString(), errorDetail(error), null, join(output, "report.json"), existsSync(checkpointPath) ? checkpointPath : null, brief.id);
   throw error;
 }
