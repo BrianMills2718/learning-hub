@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.brianmills.learning-hub-worker</string>
+  <key>ProgramArguments</key><array>
+    <string>/bin/zsh</string><string>-lc</string>
+    <string>set -a; . /Users/b/.secrets/api_keys.env; set +a; exec /opt/homebrew/bin/node /Users/b/Sites/learning-environment-pilot/worker.mjs</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>LEARNING_HUB_DATA_ROOT</key><string>/Users/b/Library/Application Support/learning-hub</string>
+    <key>LEARNING_HUB_WORKER_PYTHON</key><string>/Users/b/Services/learning-hub-deps/venv/bin/python</string>
+    <key>LEARNING_ENVIRONMENT_PACKAGE</key><string>/Users/b/Services/learning-hub-deps/node/node_modules/@brianmills2718/learning-environment</string>
+  </dict>
+  <key>StartInterval</key><integer>30</integer>
+  <key>StandardOutPath</key><string>/Users/b/Library/Logs/learning-hub-worker.log</string>
+  <key>StandardErrorPath</key><string>/Users/b/Library/Logs/learning-hub-worker-error.log</string>
+</dict></plist>
