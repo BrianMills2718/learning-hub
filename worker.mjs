@@ -33,15 +33,20 @@ try {
   const { LlmClientCurriculumAgent } = await import(join(packageRoot, "dist/generators/llm-client.js"));
   const id = `generated-${brief.id}`;
   const request = { schemaVersion: "0.2.0", id, curriculum: { id: slug(brief.title), version: "0.1.0", title: brief.title, language: "en" }, goal: { id: `${slug(brief.title)}-goal`, title: brief.outcome, description: brief.outcome, kind: "capability" }, audience: { description: `${brief.level} learners`, assumedKnowledge: [], level: brief.level }, scope: { requiredTopics: [brief.topic, brief.scope], optionalTopics: [], excludedTopics: [] }, assurance: { mode: sources.length ? "source-grounded" : "model-inherent", asOf: new Date().toISOString().slice(0, 10) }, sources, constraints: [brief.sources, brief.scope] };
-  const agent = new LlmClientCurriculumAgent({ model: "openrouter/deepseek/deepseek-v4-flash", maxBudget: 1, task: "learning_hub_generation", traceIdPrefix: `learning-hub/${brief.id}`, pythonExecutable: python, environment: process.env, reasoningEffort: "none", maxRetries: 1, maxRevisionPasses: 2 });
-  const result = await generateCurriculum({ request, policy: baselineCurriculumGenerationPolicy({ id: "learning-hub-baseline", version: "1.0.0", maxAttempts: 2 }), agent });
   const output = join(dataRoot, "artifacts", brief.id);
   mkdirSync(output, { recursive: true });
+  const checkpointPath = join(output, "candidate-checkpoint.json");
+  let checkpoint;
+  try { checkpoint = JSON.parse(await (await import("node:fs/promises")).readFile(checkpointPath, "utf8")); } catch (error) { if (error?.code !== "ENOENT") throw error; }
+  const liveAgent = new LlmClientCurriculumAgent({ model: "openrouter/deepseek/deepseek-v4-flash", maxBudget: 1, task: "learning_hub_generation", traceIdPrefix: `learning-hub/${brief.id}`, pythonExecutable: python, environment: process.env, reasoningEffort: "none", maxRetries: 1, maxRevisionPasses: 2 });
+  let usedCheckpoint = false;
+  const agent = { descriptor: liveAgent.descriptor, async propose(nextRequest) { if (checkpoint && !usedCheckpoint) { usedCheckpoint = true; return checkpoint.candidate; } const candidate = await liveAgent.propose(nextRequest); writeFileSync(checkpointPath, `${JSON.stringify({ candidate, savedAt: new Date().toISOString() }, null, 2)}\n`); return candidate; }, async revise(revision) { const candidate = await liveAgent.revise(revision); writeFileSync(checkpointPath, `${JSON.stringify({ candidate, savedAt: new Date().toISOString() }, null, 2)}\n`); return candidate; } };
+  const result = await generateCurriculum({ request, policy: baselineCurriculumGenerationPolicy({ id: "learning-hub-baseline", version: "1.0.0", maxAttempts: 3 }), agent });
   const reportPath = join(output, "report.json");
   writeFileSync(reportPath, `${JSON.stringify(result.report, null, 2)}\n`);
   const artifactPath = result.curriculum ? join(output, "curriculum.json") : null;
   if (result.curriculum) writeFileSync(artifactPath, `${JSON.stringify(result.curriculum, null, 2)}\n`);
-  finish.run(result.status === "accepted" ? "generated" : "failed", new Date().toISOString(), result.status === "accepted" ? null : `Generation ended ${result.status}.`, artifactPath, reportPath, brief.id);
+  finish.run(result.status === "accepted" ? "generated" : "failed", new Date().toISOString(), result.status === "accepted" ? null : `Generation ended ${result.status}; private checkpoint retained for continuation.`, artifactPath, reportPath, brief.id);
 } catch (error) {
   finish.run("failed", new Date().toISOString(), error instanceof Error ? error.message.slice(0, 2000) : "Worker failure.", null, null, brief.id);
   throw error;
