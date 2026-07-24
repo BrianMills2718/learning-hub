@@ -7,12 +7,12 @@ const ENVIRONMENTS = [
 ];
 
 const PROFILE_KEY = "learning-hub:profile:v1";
-const DRAFTS_KEY = "learning-hub:drafts:v1";
 const SUMMARY_KEY = (environmentId) => `learning-hub:progress:${environmentId}:v1`;
 const app = document.querySelector("#app");
 const profileForm = document.querySelector("[data-profile-form]");
-const username = profileForm.elements.username;
-const dialog = document.querySelector("[data-draft-dialog]");
+const usernameInput = profileForm.elements.username;
+const profileMessage = document.querySelector("[data-profile-message]");
+const workspace = { username: null, profile: null, briefs: [], loading: false, error: null };
 
 function readJson(key, fallback) {
   try {
@@ -27,14 +27,9 @@ function writeJson(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-function profile() {
+function localProfile() {
   const value = readJson(PROFILE_KEY, {});
   return typeof value.username === "string" ? value : {};
-}
-
-function drafts() {
-  const value = readJson(DRAFTS_KEY, []);
-  return Array.isArray(value) ? value : [];
 }
 
 function summary(environmentId) {
@@ -47,6 +42,49 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[character]));
 }
 
+function formatDate(value) {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: { "content-type": "application/json", ...(options.headers ?? {}) },
+  });
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error || "The server could not complete that request.");
+  return payload;
+}
+
+function setProfileMessage(message, state = "") {
+  profileMessage.textContent = message;
+  profileMessage.dataset.state = state;
+}
+
+async function refreshWorkspace() {
+  const username = localProfile().username;
+  workspace.username = username || null;
+  workspace.profile = null;
+  workspace.briefs = [];
+  workspace.error = null;
+  if (!username) return;
+  workspace.loading = true;
+  render();
+  try {
+    const [profile, briefs] = await Promise.all([
+      api(`/api/profiles/${encodeURIComponent(username)}`),
+      api(`/api/profiles/${encodeURIComponent(username)}/briefs`),
+    ]);
+    workspace.profile = profile;
+    workspace.briefs = briefs.briefs;
+  } catch (error) {
+    workspace.error = error instanceof Error ? error.message : "Could not load the shared profile.";
+  } finally {
+    workspace.loading = false;
+    render();
+  }
+}
+
 function progressFor(environment) {
   const value = summary(environment.id);
   const completed = Array.isArray(value?.completedNodeIds) ? value.completedNodeIds.length : 0;
@@ -54,96 +92,116 @@ function progressFor(environment) {
   return { completed, label: `${completed} completed`, state: "in-progress" };
 }
 
+function profileSummary() {
+  if (!workspace.username) return "Choose a public name to create or view shared learning environments.";
+  if (workspace.loading) return `Loading ${workspace.username}'s shared profile...`;
+  if (workspace.error) return workspace.error;
+  if (!workspace.profile?.exists) return `${workspace.username} has no shared profile yet.`;
+  return `${workspace.profile.briefCount} creation request${workspace.profile.briefCount === 1 ? "" : "s"} on this shared profile.`;
+}
+
 function renderDashboard() {
-  const currentProfile = profile();
-  username.value = currentProfile.username || "";
+  const currentProfile = localProfile();
+  usernameInput.value = currentProfile.username || "";
   const progress = ENVIRONMENTS.map((environment) => ({ environment, progress: progressFor(environment) }));
   const activeCount = progress.filter((item) => item.progress.completed > 0).length;
   const achievementPercent = Math.round((activeCount / ENVIRONMENTS.length) * 100);
-  const currentDrafts = drafts();
+  const currentBriefs = workspace.briefs;
   app.innerHTML = `<div class="workspace">
-    <p class="eyebrow">${currentProfile.username ? `Workspace for ${escapeHtml(currentProfile.username)}` : "Local workspace"}</p>
+    <p class="eyebrow">${currentProfile.username ? `Shared workspace for ${escapeHtml(currentProfile.username)}` : "Shared learning workspace"}</p>
     <h1>Learning environments</h1>
-    <p class="lede">Choose an environment, continue a goal, or define a new environment as a structured draft.</p>
+    <p class="lede">${escapeHtml(profileSummary())}</p>
+    ${workspace.error ? `<p class="error" role="alert">${escapeHtml(workspace.error)}</p>` : ""}
     <div class="dashboard-grid">
       <section aria-labelledby="environments-heading">
         <div class="section-heading"><h2 id="environments-heading">Environments</h2><span>${ENVIRONMENTS.length} available</span></div>
         <ul class="environment-list">${progress.map(({ environment, progress: item }) => `<li class="environment-row"><div><h3>${escapeHtml(environment.title)}</h3><p>${escapeHtml(environment.description)}</p></div><div class="environment-meta"><span class="status ${item.state}">${item.label}</span><a class="button secondary" href="${environment.href}">Open</a></div></li>`).join("")}</ul>
         <section class="creator" aria-labelledby="creator-heading"><h2 id="creator-heading">New environment</h2>
-          <form data-draft-form>
+          <form data-brief-form>
             <label>Title<input name="title" maxlength="80" required></label>
             <label>Topic<input name="topic" maxlength="160" required></label>
             <div class="two-col"><label>Starting level<select name="level"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label><label>Visibility<select name="visibility"><option value="private">Private draft</option><option value="unlisted">Unlisted draft</option><option value="publishable">Review for publishing</option></select></label></div>
             <label>Outcome<textarea name="outcome" required></textarea></label>
             <label>Source material or source requirements<textarea name="sources" required></textarea></label>
             <label>Scope and time budget<textarea name="scope" required></textarea></label>
-            <div class="form-actions"><button type="submit">Create draft</button><p class="creation-note">Drafts stay in this browser until submitted to a generation service.</p></div>
+            <label class="research-choice"><input name="researchEnabled" type="checkbox"> <span>Research current web sources before compiling</span></label>
+            <div class="form-actions"><button type="submit" ${workspace.loading ? "disabled" : ""}>Create environment</button><p class="creation-note">Requests are public to the selected name. The same name always shares one profile.</p></div>
           </form>
         </section>
       </section>
       <aside>
         <section class="achievement" aria-labelledby="achievement-heading"><h2 id="achievement-heading">Cross-environment explorer</h2><p>Make progress across your learning environments.</p><div class="meter" aria-label="${activeCount} of ${ENVIRONMENTS.length} environments started"><span style="width:${achievementPercent}%"></span></div><p>${activeCount} of ${ENVIRONMENTS.length} environments started</p></section>
-        <section aria-labelledby="drafts-heading"><div class="section-heading"><h2 id="drafts-heading">Your drafts</h2><span>${currentDrafts.length}</span></div>${currentDrafts.length ? `<ul class="draft-list">${currentDrafts.map((draft) => `<li class="draft-row"><div><h3>${escapeHtml(draft.title)}</h3><p>${escapeHtml(draft.topic)} - ${escapeHtml(draft.level)} - ${escapeHtml(draft.visibility)}</p></div><a class="button secondary" href="#/draft/${encodeURIComponent(draft.id)}">View</a></li>`).join("")}</ul>` : '<p class="empty">No drafts yet.</p>'}</section>
+        <section aria-labelledby="briefs-heading"><div class="section-heading"><h2 id="briefs-heading">Creation requests</h2><span>${currentBriefs.length}</span></div>${currentBriefs.length ? `<ul class="draft-list">${currentBriefs.map((brief) => `<li class="draft-row"><div><h3>${escapeHtml(brief.title)}</h3><p>${escapeHtml(brief.topic)} - ${escapeHtml(brief.status)}${brief.researchEnabled ? " - web research" : ""}</p></div><a class="button secondary" href="#/brief/${encodeURIComponent(brief.id)}">View</a></li>`).join("")}</ul>` : '<p class="empty">No creation requests yet.</p>'}</section>
       </aside>
     </div>
   </div>`;
-  document.querySelector("[data-draft-form]").addEventListener("submit", createDraft);
+  document.querySelector("[data-brief-form]").addEventListener("submit", createBrief);
 }
 
-function createDraft(event) {
+async function createBrief(event) {
   event.preventDefault();
+  const username = localProfile().username;
+  if (!username) {
+    setProfileMessage("Choose a public name before creating an environment.", "error");
+    usernameInput.focus();
+    return;
+  }
   const form = new FormData(event.currentTarget);
-  const draft = {
-    id: globalThis.crypto?.randomUUID?.() || String(Date.now()),
-    createdAt: new Date().toISOString(),
-    title: form.get("title").trim(),
-    topic: form.get("topic").trim(),
-    level: form.get("level"),
-    visibility: form.get("visibility"),
-    outcome: form.get("outcome").trim(),
-    sources: form.get("sources").trim(),
-    scope: form.get("scope").trim(),
-    status: "draft",
-  };
-  const next = [...drafts(), draft];
-  writeJson(DRAFTS_KEY, next);
-  location.hash = `#/draft/${encodeURIComponent(draft.id)}`;
+  const submitButton = event.currentTarget.querySelector("button[type=submit]");
+  submitButton.disabled = true;
+  try {
+    const result = await api("/api/briefs", {
+      method: "POST",
+      body: JSON.stringify({
+        username,
+        title: form.get("title"),
+        topic: form.get("topic"),
+        level: form.get("level"),
+        visibility: form.get("visibility"),
+        outcome: form.get("outcome"),
+        sources: form.get("sources"),
+        scope: form.get("scope"),
+        researchEnabled: form.get("researchEnabled") === "on",
+      }),
+    });
+    await refreshWorkspace();
+    location.hash = `#/brief/${encodeURIComponent(result.brief.id)}`;
+  } catch (error) {
+    setProfileMessage(error instanceof Error ? error.message : "Could not create the environment.", "error");
+    submitButton.disabled = false;
+  }
 }
 
-function renderDraft(draftId) {
-  const draft = drafts().find((item) => item.id === draftId);
-  if (!draft) { location.hash = "#/"; return; }
-  app.innerHTML = `<article class="draft-view"><a class="button secondary" href="#/">Back to workspace</a><header><p class="eyebrow">${escapeHtml(draft.visibility)} - ${escapeHtml(draft.status)}</p><h1>${escapeHtml(draft.title)}</h1><p class="lede">${escapeHtml(draft.topic)}</p></header><dl><dt>Starting level</dt><dd>${escapeHtml(draft.level)}</dd><dt>Outcome</dt><dd>${escapeHtml(draft.outcome)}</dd><dt>Sources</dt><dd>${escapeHtml(draft.sources)}</dd><dt>Scope</dt><dd>${escapeHtml(draft.scope)}</dd></dl><button type="button" data-export-draft>Export brief</button></article>`;
-  document.querySelector("[data-export-draft]").addEventListener("click", () => showDraftExport(draft));
-}
-
-function showDraftExport(draft) {
-  dialog.innerHTML = `<form method="dialog" class="dialog"><h2 id="draft-dialog-heading">Draft brief</h2><pre>${escapeHtml(JSON.stringify({ schemaVersion: "1", draft }, null, 2))}</pre><div class="actions"><button type="button" data-download>Download JSON</button><button type="submit" class="secondary">Close</button></div></form>`;
-  dialog.querySelector("[data-download]").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ schemaVersion: "1", draft }, null, 2) + "\n"], { type: "application/json" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `${draft.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "learning-environment"}-brief.json`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 0);
-  });
-  dialog.showModal();
+function renderBrief(briefId) {
+  const brief = workspace.briefs.find((item) => item.id === briefId);
+  if (!brief) {
+    app.innerHTML = `<div class="draft-view"><a class="button secondary" href="#/">Back to workspace</a><p class="empty">${workspace.loading ? "Loading creation request..." : "Creation request not found on this shared profile."}</p></div>`;
+    return;
+  }
+  app.innerHTML = `<article class="draft-view"><a class="button secondary" href="#/">Back to workspace</a><header><p class="eyebrow">${escapeHtml(brief.visibility)} - ${escapeHtml(brief.status)}</p><h1>${escapeHtml(brief.title)}</h1><p class="lede">${escapeHtml(brief.topic)}</p></header><dl><dt>Created</dt><dd>${escapeHtml(formatDate(brief.createdAt))}</dd><dt>Starting level</dt><dd>${escapeHtml(brief.level)}</dd><dt>Outcome</dt><dd>${escapeHtml(brief.outcome)}</dd><dt>Sources</dt><dd>${escapeHtml(brief.sources)}</dd><dt>Scope</dt><dd>${escapeHtml(brief.scope)}</dd><dt>Web research</dt><dd>${brief.researchEnabled ? "Requested before compilation" : "Not requested"}</dd></dl></article>`;
 }
 
 function render() {
-  const match = location.hash.match(/^#\/draft\/([^/]+)$/);
-  if (match) renderDraft(decodeURIComponent(match[1])); else renderDashboard();
+  const match = location.hash.match(/^#\/brief\/([^/]+)$/);
+  if (match) renderBrief(decodeURIComponent(match[1])); else renderDashboard();
 }
 
-profileForm.addEventListener("submit", (event) => {
+profileForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const value = username.value.trim();
-  if (value) writeJson(PROFILE_KEY, { username: value });
-  else localStorage.removeItem(PROFILE_KEY);
-  render();
+  const username = usernameInput.value.trim();
+  if (!username) return;
+  try {
+    const result = await api(`/api/profiles/${encodeURIComponent(username)}`, { method: "PUT" });
+    writeJson(PROFILE_KEY, { username });
+    setProfileMessage(result.shared ? `${username} already exists. You are viewing its shared profile.` : `${username} is now a shared profile.`, result.shared ? "shared" : "");
+    await refreshWorkspace();
+  } catch (error) {
+    setProfileMessage(error instanceof Error ? error.message : "Could not use that name.", "error");
+  }
 });
 window.addEventListener("hashchange", render);
 window.addEventListener("storage", (event) => {
-  if (event.key?.startsWith("learning-hub:")) render();
+  if (event.key === PROFILE_KEY || event.key?.startsWith("learning-hub:progress:")) refreshWorkspace();
 });
+refreshWorkspace();
 render();

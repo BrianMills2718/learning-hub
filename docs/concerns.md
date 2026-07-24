@@ -3,8 +3,8 @@
 | ID | Status | Concern | Disposition |
 |---|---|---|---|
 | H-001 | resolved | The Mac mini host had been unreachable through Tailscale and Funnel. | The static service now binds to loopback and Tailscale Funnel serves the public origin. Browser checks confirmed the hub and all five application routes. |
-| H-002 | accepted | The local alias is not an account and cannot synchronize or protect a name. | Keep it local for slice 1; replace with passwordless authentication in slice 3. |
-| H-003 | open | Draft briefs are browser-local and do not enter a generation or review queue. | Implement authenticated intake before claiming creation or publication is automated. |
+| H-002 | accepted | A username is not an account and cannot prove ownership. | Shared names intentionally share a profile. The service must not store private learner material or treat a name as authorization. |
+| H-003 | open | Creation requests persist but do not yet execute the curriculum compiler or publish a generated environment. | Attach a server-side worker with source acquisition, `llm_client`, and the existing generation gates before claiming automatic generation. |
 | H-004 | open | The current accomplishment measures participation, not transferable learning. | Add authored mappings and evidence requirements in slice 4. |
 | H-005 | mitigated | Copied feedback stores used one shared key across Learning Map and Second Brain. | Each app now has a namespaced key and conservatively imports only its own legacy lesson IDs. |
 | H-006 | resolved | The Mac service definition was owned by the library under an obsolete pilot name. | The Learning Hub now owns the service definition and installer. |

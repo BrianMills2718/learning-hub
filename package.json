@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --check app.js && bash -n scripts/install-mac-mini-service.sh && bash -n scripts/deploy-mac-mini.sh",
+    "test": "node --check app.js && node --check server.mjs && node scripts/check-server.mjs && bash -n scripts/install-mac-mini-service.sh && bash -n scripts/deploy-mac-mini.sh",
     "check": "npm run test",
     "install:mac-mini": "./scripts/install-mac-mini-service.sh",
     "deploy:mac-mini": "./scripts/deploy-mac-mini.sh"

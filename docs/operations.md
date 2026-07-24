@@ -1,8 +1,12 @@
 # Mac Mini Operations
 
-The Mac mini runs the static Learning Hub on port 8780. Tailscale Funnel terminates public HTTPS
-and forwards requests to this listener; the Python process binds only to loopback, so it is
+The Mac mini runs the Learning Hub Node service on port 8780. Tailscale Funnel terminates public
+HTTPS and forwards requests to this listener; the service binds only to loopback, so it is
 reachable through the public proxy but not directly over the network.
+
+The service serves the static site and its same-origin `/api` routes. Persistent shared-profile
+and creation-request state is SQLite at `/Users/b/Library/Application Support/learning-hub/`,
+outside the rotated static site directory.
 
 ## Install Or Replace The Service
 
@@ -31,4 +35,5 @@ curl -fsS http://127.0.0.1:8780/
 ```
 
 The public URL is reported by `tailscale funnel status`. Do not place provider credentials or
-learner data in the static directory.
+learner data in the static directory. The current public API has no identity or ownership model,
+so do not place private information in a shared-name profile.

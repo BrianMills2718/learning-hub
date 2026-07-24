@@ -1,25 +1,29 @@
 # Learning Hub
 
-The shared workspace for hosted learning environments. It provides a catalog, a browser-local
-learner alias, explicit cross-environment accomplishment readouts, and structured creation
-briefs for new environments.
+The shared workspace for hosted learning environments. It provides a catalog, public shared
+username profiles, explicit cross-environment accomplishment readouts, and persistent creation
+requests for new environments.
 
 ## What Exists
 
 - The catalog links to Second Brain, Learning Map, Godel, Category Theory, and Claude Code.
-- A local alias labels the current browser's workspace.
+- A public username opens a shared profile. When a name already exists, the visitor sees its
+  status and can use the shared profile or choose another name. There is intentionally no login.
 - Each environment publishes a minimal, versioned progress summary on the shared browser origin.
 - The hub aggregates those summaries into explicit cross-environment accomplishments.
-- The creation flow stores a draft brief locally and exports it as JSON for generation and review.
+- The creation flow persists a structured request on the Mac mini, including whether the compiler
+  must obtain current web sources before generation.
 
 ## What Does Not Exist Yet
 
-- A local alias is not an account, cannot prevent name collisions, and does not synchronize across
-  browsers or devices.
-- Drafts are not generated curricula and are never published automatically.
+- A shared username has no ownership boundary. Anyone using the same name can see and add to that
+  shared profile; this is deliberate and unsuitable for private material.
+- Requests enter a durable queue, but the curriculum compiler worker and automatic publication
+  are not wired yet.
 - The current accomplishment is deliberately small: it reads whether each existing environment
   has recorded actual progress. Future accomplishments need authored mappings, not title matching.
-- There is no server-side API, database, provider credential, or public submission queue.
+- The service deliberately exposes no provider credential to browsers. The worker will use
+  `llm_client` and OpenRouter DeepSeek V4 Flash from the server environment.
 
 ## Contracts
 
