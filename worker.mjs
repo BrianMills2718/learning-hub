@@ -9,6 +9,7 @@ const python = process.env.LEARNING_HUB_WORKER_PYTHON;
 const generationModel = process.env.LEARNING_HUB_GENERATION_MODEL ?? "openrouter/deepseek/deepseek-v4-flash";
 const continuationModel = process.env.LEARNING_HUB_CONTINUATION_MODEL ?? generationModel;
 const continuationModelJustification = process.env.LEARNING_HUB_CONTINUATION_MODEL_JUSTIFICATION;
+const continuationReasoningEffort = process.env.LEARNING_HUB_CONTINUATION_REASONING_EFFORT;
 if (!packageRoot || !python) throw new Error("LEARNING_ENVIRONMENT_PACKAGE and LEARNING_HUB_WORKER_PYTHON are required.");
 mkdirSync(join(dataRoot, "artifacts"), { recursive: true });
 const db = new DatabaseSync(join(dataRoot, "learning-hub.sqlite"));
@@ -54,7 +55,7 @@ try {
   let checkpoint;
   try { checkpoint = JSON.parse(await (await import("node:fs/promises")).readFile(checkpointPath, "utf8")); } catch (error) { if (error?.code !== "ENOENT") throw error; }
   const usingContinuationModel = Boolean(checkpoint && continuationModel !== generationModel);
-  const liveAgent = new LlmClientCurriculumAgent({ model: usingContinuationModel ? continuationModel : generationModel, maxBudget: 1, task: "learning_hub_generation", traceIdPrefix: `learning-hub/${brief.id}`, pythonExecutable: python, environment: process.env, ...(usingContinuationModel ? { modelJustification: continuationModelJustification } : { reasoningEffort: "none" }), maxRetries: 1, maxRevisionPasses: 2 });
+  const liveAgent = new LlmClientCurriculumAgent({ model: usingContinuationModel ? continuationModel : generationModel, maxBudget: 1, task: "learning_hub_generation", traceIdPrefix: `learning-hub/${brief.id}`, pythonExecutable: python, environment: process.env, ...(usingContinuationModel ? { modelJustification: continuationModelJustification, reasoningEffort: continuationReasoningEffort } : { reasoningEffort: "none" }), maxRetries: 1, maxRevisionPasses: 2 });
   let usedCheckpoint = false;
   const agent = { descriptor: liveAgent.descriptor, async propose(nextRequest) { if (checkpoint && !usedCheckpoint) { usedCheckpoint = true; return checkpoint.candidate; } const candidate = await liveAgent.propose(nextRequest); writeFileSync(checkpointPath, `${JSON.stringify({ candidate, savedAt: new Date().toISOString() }, null, 2)}\n`); return candidate; }, async revise(revision) { const candidate = await liveAgent.revise(revision); writeFileSync(checkpointPath, `${JSON.stringify({ candidate, savedAt: new Date().toISOString() }, null, 2)}\n`); return candidate; } };
   const result = await generateCurriculum({ request, policy: baselineCurriculumGenerationPolicy({ id: "learning-hub-baseline", version: "1.0.0", maxAttempts: 3 }), agent });
