@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0e6b62">
+  <title>Learning Workspace</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">Learning Workspace</a>
+    <form class="profile-form" data-profile-form>
+      <label for="username">Learner</label>
+      <input id="username" name="username" autocomplete="nickname" maxlength="32" placeholder="Choose a name" required>
+      <button type="submit">Save</button>
+    </form>
+  </header>
+  <main id="app"></main>
+  <dialog data-draft-dialog aria-labelledby="draft-dialog-heading"></dialog>
+  <script src="./app.js"></script>
+</body>
+</html>
