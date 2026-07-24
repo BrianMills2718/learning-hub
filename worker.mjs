@@ -9,6 +9,11 @@ const python = process.env.LEARNING_HUB_WORKER_PYTHON;
 if (!packageRoot || !python) throw new Error("LEARNING_ENVIRONMENT_PACKAGE and LEARNING_HUB_WORKER_PYTHON are required.");
 mkdirSync(join(dataRoot, "artifacts"), { recursive: true });
 const db = new DatabaseSync(join(dataRoot, "learning-hub.sqlite"));
+try {
+  db.exec("ALTER TABLE briefs ADD COLUMN checkpoint_path TEXT");
+} catch (error) {
+  if (!String(error).includes("duplicate column name")) throw error;
+}
 const claim = db.prepare("UPDATE briefs SET status = 'generating', claimed_at = ? WHERE id = ? AND status = 'queued'");
 const next = db.prepare("SELECT * FROM briefs WHERE status = 'queued' ORDER BY created_at LIMIT 1");
 const finish = db.prepare("UPDATE briefs SET status = ?, completed_at = ?, failure_message = ?, artifact_path = ?, report_path = ?, checkpoint_path = ? WHERE id = ?");

@@ -29,6 +29,6 @@ scp -i "$SSH_KEY" -r "$CODE_ROOT/learning-map-ladder/dist/." "$HOST:$STAGING_ROO
 scp -i "$SSH_KEY" -r "$CODE_ROOT/second-brain-ladder/dist/." "$HOST:$STAGING_ROOT/second-brain/"
 scp -i "$SSH_KEY" -r "$CODE_ROOT/category-ladder/dist/." "$HOST:$STAGING_ROOT/category/"
 scp -i "$SSH_KEY" -r "$CODE_ROOT/claude-ladder/dist/." "$HOST:$STAGING_ROOT/claude/"
-ssh -i "$SSH_KEY" "$HOST" "rm -rf '$PREVIOUS_ROOT'; test ! -e '$REMOTE_ROOT' || mv '$REMOTE_ROOT' '$PREVIOUS_ROOT'; mv '$STAGING_ROOT' '$REMOTE_ROOT'; for service in com.brianmills.learning-hub com.brianmills.learning-hub-worker; do launchctl bootout gui/\$(id -u)/\$service 2>/dev/null || true; launchctl bootstrap gui/\$(id -u) /Users/b/Library/LaunchAgents/\$service.plist; launchctl kickstart -k gui/\$(id -u)/\$service; done"
+ssh -i "$SSH_KEY" "$HOST" "rm -rf '$PREVIOUS_ROOT'; test ! -e '$REMOTE_ROOT' || mv '$REMOTE_ROOT' '$PREVIOUS_ROOT'; mv '$STAGING_ROOT' '$REMOTE_ROOT'; for service in com.brianmills.learning-hub com.brianmills.learning-hub-worker; do launchctl bootout gui/\$(id -u)/\$service 2>/dev/null || true; launchctl bootstrap gui/\$(id -u) /Users/b/Library/LaunchAgents/\$service.plist; launchctl kickstart -k gui/\$(id -u)/\$service; done; grep -q 'checkpoint_path' '$REMOTE_ROOT/server.mjs'; curl -fsS http://127.0.0.1:8780/api/health >/dev/null"
 
 printf 'Deployed Learning Hub to %s\n' "$HOST"
