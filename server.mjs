@@ -57,6 +57,14 @@ database.exec(`
     count INTEGER NOT NULL,
     PRIMARY KEY(day, origin)
   );
+  CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    brief_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(brief_id) REFERENCES briefs(id)
+  );
 `);
 for (const column of [
   "claimed_at TEXT",
@@ -110,6 +118,7 @@ const incrementGenerationLimit = database.prepare(`
   INSERT INTO generation_limits (day, origin, count) VALUES (?, ?, 1)
   ON CONFLICT(day, origin) DO UPDATE SET count = count + 1
 `);
+const insertFeedback = database.prepare("INSERT INTO feedback (id, brief_id, username, body, created_at) VALUES (?, ?, ?, ?, ?)");
 
 function json(response, status, body) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -290,6 +299,17 @@ async function handleApi(request, response, url) {
     }
     retryBrief.run(brief.id);
     return json(response, 200, { brief: briefResponse(selectBrief.get(brief.id)), resumedFromCheckpoint: true });
+  }
+
+  const feedbackMatch = url.pathname.match(/^\/api\/briefs\/([a-f0-9-]+)\/feedback$/);
+  if (request.method === "POST" && feedbackMatch) {
+    const brief = selectBrief.get(feedbackMatch[1]);
+    if (!brief) return json(response, 404, { error: "Brief not found." });
+    const input = await readBody(request);
+    const username = normalizeUsername(input.username);
+    const body = requiredText(input.body, "Feedback", 2_000);
+    insertFeedback.run(crypto.randomUUID(), brief.id, username, body, new Date().toISOString());
+    return json(response, 201, { recorded: true });
   }
 
   if (request.method === "POST" && url.pathname === "/api/briefs") {

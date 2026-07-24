@@ -180,7 +180,8 @@ function renderBrief(briefId) {
   }
   const generatedLink = brief.generatedUrl ? `<a class="button" href="${escapeHtml(brief.generatedUrl)}">Open learning environment</a>` : "";
   const retryControl = brief.status === "failed" && brief.resumeAvailable ? '<button type="button" data-retry-brief>Continue generation</button><p class="creation-note" data-retry-message aria-live="polite"></p>' : "";
-  app.innerHTML = `<article class="draft-view"><a class="button secondary" href="#/">Back to workspace</a><header><p class="eyebrow">${escapeHtml(brief.visibility)} - ${escapeHtml(brief.status)}</p><h1>${escapeHtml(brief.title)}</h1><p class="lede">${escapeHtml(brief.topic)}</p></header><dl><dt>Created</dt><dd>${escapeHtml(formatDate(brief.createdAt))}</dd><dt>Starting level</dt><dd>${escapeHtml(brief.level)}</dd><dt>Outcome</dt><dd>${escapeHtml(brief.outcome)}</dd><dt>Sources</dt><dd>${escapeHtml(brief.sources)}</dd><dt>Scope</dt><dd>${escapeHtml(brief.scope)}</dd><dt>Web research</dt><dd>${brief.researchEnabled ? "Requested before compilation" : "Not requested"}</dd>${brief.failureMessage ? `<dt>Generation result</dt><dd>${escapeHtml(brief.failureMessage)}</dd>` : ""}</dl>${generatedLink}${retryControl}</article>`;
+  const feedbackControl = workspace.username ? '<form data-feedback-form><label>Feedback<textarea name="body" maxlength="2000" required></textarea></label><button type="submit">Send feedback</button><p class="creation-note" data-feedback-message aria-live="polite"></p></form>' : "";
+  app.innerHTML = `<article class="draft-view"><a class="button secondary" href="#/">Back to workspace</a><header><p class="eyebrow">${escapeHtml(brief.visibility)} - ${escapeHtml(brief.status)}</p><h1>${escapeHtml(brief.title)}</h1><p class="lede">${escapeHtml(brief.topic)}</p></header><dl><dt>Created</dt><dd>${escapeHtml(formatDate(brief.createdAt))}</dd><dt>Starting level</dt><dd>${escapeHtml(brief.level)}</dd><dt>Outcome</dt><dd>${escapeHtml(brief.outcome)}</dd><dt>Sources</dt><dd>${escapeHtml(brief.sources)}</dd><dt>Scope</dt><dd>${escapeHtml(brief.scope)}</dd><dt>Web research</dt><dd>${brief.researchEnabled ? "Requested before compilation" : "Not requested"}</dd>${brief.failureMessage ? `<dt>Generation result</dt><dd>${escapeHtml(brief.failureMessage)}</dd>` : ""}</dl>${generatedLink}${retryControl}${feedbackControl}</article>`;
   document.querySelector("[data-retry-brief]")?.addEventListener("click", async (event) => {
     event.currentTarget.disabled = true;
     const message = document.querySelector("[data-retry-message]");
@@ -193,6 +194,16 @@ function renderBrief(briefId) {
       message.textContent = error instanceof Error ? error.message : "Could not continue generation.";
       event.currentTarget.disabled = false;
     }
+  });
+  document.querySelector("[data-feedback-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const message = document.querySelector("[data-feedback-message]");
+    try {
+      await api(`/api/briefs/${encodeURIComponent(brief.id)}/feedback`, { method: "POST", body: JSON.stringify({ username: workspace.username, body: form.get("body") }) });
+      event.currentTarget.reset();
+      message.textContent = "Feedback recorded.";
+    } catch (error) { message.textContent = error instanceof Error ? error.message : "Could not record feedback."; }
   });
 }
 
