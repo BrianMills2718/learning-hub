@@ -40,10 +40,28 @@ database.exec(`
     scope TEXT NOT NULL,
     research_enabled INTEGER NOT NULL,
     status TEXT NOT NULL,
+    claimed_at TEXT,
+    completed_at TEXT,
+    failure_message TEXT,
+    artifact_path TEXT,
+    report_path TEXT,
     FOREIGN KEY(username) REFERENCES profiles(username)
   );
   CREATE INDEX IF NOT EXISTS briefs_by_username_created_at ON briefs(username, created_at DESC);
 `);
+for (const column of [
+  "claimed_at TEXT",
+  "completed_at TEXT",
+  "failure_message TEXT",
+  "artifact_path TEXT",
+  "report_path TEXT",
+]) {
+  try {
+    database.exec(`ALTER TABLE briefs ADD COLUMN ${column}`);
+  } catch (error) {
+    if (!String(error).includes("duplicate column name")) throw error;
+  }
+}
 
 const selectProfile = database.prepare(`
   SELECT profile.username, profile.created_at, profile.last_seen_at, COUNT(brief.id) AS brief_count
@@ -58,7 +76,7 @@ const upsertProfile = database.prepare(`
 `);
 const selectBriefs = database.prepare(`
   SELECT id, username, created_at, title, topic, level, visibility, outcome, sources, scope,
-         research_enabled, status
+         research_enabled, status, claimed_at, completed_at, failure_message, artifact_path, report_path
   FROM briefs WHERE username = ? ORDER BY created_at DESC
 `);
 const insertBrief = database.prepare(`
@@ -69,7 +87,7 @@ const insertBrief = database.prepare(`
 `);
 const selectBrief = database.prepare(`
   SELECT id, username, created_at, title, topic, level, visibility, outcome, sources, scope,
-         research_enabled, status
+         research_enabled, status, claimed_at, completed_at, failure_message, artifact_path, report_path
   FROM briefs WHERE id = ?
 `);
 
@@ -123,6 +141,11 @@ function briefResponse(brief) {
     scope: brief.scope,
     researchEnabled: Boolean(brief.research_enabled),
     status: brief.status,
+    claimedAt: brief.claimed_at,
+    completedAt: brief.completed_at,
+    failureMessage: brief.failure_message,
+    artifactPath: brief.artifact_path,
+    reportPath: brief.report_path,
   };
 }
 
