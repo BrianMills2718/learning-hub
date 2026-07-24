@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, readFileSync, statSync } from "node:fs";
-import { resolve, extname, join, relative } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { resolve, dirname, extname, join, relative } from "node:path";
 
 const HOST = process.env.LEARNING_HUB_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.LEARNING_HUB_PORT ?? "8780");
@@ -89,6 +89,10 @@ const selectBrief = database.prepare(`
   SELECT id, username, created_at, title, topic, level, visibility, outcome, sources, scope,
          research_enabled, status, claimed_at, completed_at, failure_message, artifact_path, report_path
   FROM briefs WHERE id = ?
+`);
+const retryBrief = database.prepare(`
+  UPDATE briefs SET status = 'queued', claimed_at = NULL, completed_at = NULL, failure_message = NULL
+  WHERE id = ? AND status = 'failed'
 `);
 
 function json(response, status, body) {
@@ -208,6 +212,18 @@ async function handleApi(request, response, url) {
   if (request.method === "GET" && briefMatch) {
     const brief = selectBrief.get(briefMatch[1]);
     return brief ? json(response, 200, { brief: briefResponse(brief) }) : json(response, 404, { error: "Brief not found." });
+  }
+
+  const retryMatch = url.pathname.match(/^\/api\/briefs\/([a-f0-9-]+)\/retry$/);
+  if (request.method === "POST" && retryMatch) {
+    const brief = selectBrief.get(retryMatch[1]);
+    if (!brief) return json(response, 404, { error: "Brief not found." });
+    if (brief.status !== "failed") return json(response, 409, { error: "Only failed requests can be retried." });
+    if (!brief.artifact_path || !existsSync(join(dirname(brief.artifact_path), "candidate-checkpoint.json"))) {
+      return json(response, 409, { error: "This failed request has no private candidate checkpoint to resume." });
+    }
+    retryBrief.run(brief.id);
+    return json(response, 200, { brief: briefResponse(selectBrief.get(brief.id)), resumedFromCheckpoint: true });
   }
 
   if (request.method === "POST" && url.pathname === "/api/briefs") {
