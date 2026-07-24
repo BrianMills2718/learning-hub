@@ -10,6 +10,8 @@
     <key>LEARNING_HUB_DATA_ROOT</key><string>/Users/b/Library/Application Support/learning-hub</string>
     <key>LEARNING_HUB_WORKER_PYTHON</key><string>/Users/b/Services/learning-hub-deps/venv/bin/python</string>
     <key>LEARNING_ENVIRONMENT_PACKAGE</key><string>/Users/b/Services/learning-hub-deps/node/node_modules/@brianmills2718/learning-environment</string>
+    <key>LEARNING_HUB_CONTINUATION_MODEL</key><string>openrouter/minimax/minimax-m3</string>
+    <key>LEARNING_HUB_CONTINUATION_MODEL_JUSTIFICATION</key><string>DeepSeek V4 Flash exhausted preserved checkpoint revisions with structurally valid but semantically invalid evidence relations.</string>
   </dict>
   <key>StartInterval</key><integer>30</integer>
   <key>StandardOutPath</key><string>/Users/b/Library/Logs/learning-hub-worker.log</string>
