@@ -22,11 +22,12 @@ verify_and_build_app claude-ladder
 
 ssh -i "$SSH_KEY" "$HOST" "rm -rf '$STAGING_ROOT'; mkdir -p '$STAGING_ROOT/godel' '$STAGING_ROOT/learning-map' '$STAGING_ROOT/second-brain' '$STAGING_ROOT/category' '$STAGING_ROOT/claude'"
 scp -i "$SSH_KEY" "$ROOT/index.html" "$ROOT/styles.css" "$ROOT/app.js" "$ROOT/server.mjs" "$HOST:$STAGING_ROOT/"
+scp -i "$SSH_KEY" "$ROOT/ops/mac-mini/com.brianmills.learning-hub.plist" "$HOST:/Users/b/Library/LaunchAgents/com.brianmills.learning-hub.plist"
 scp -i "$SSH_KEY" -r "$CODE_ROOT/godel-concept-ladder/dist/." "$HOST:$STAGING_ROOT/godel/"
 scp -i "$SSH_KEY" -r "$CODE_ROOT/learning-map-ladder/dist/." "$HOST:$STAGING_ROOT/learning-map/"
 scp -i "$SSH_KEY" -r "$CODE_ROOT/second-brain-ladder/dist/." "$HOST:$STAGING_ROOT/second-brain/"
 scp -i "$SSH_KEY" -r "$CODE_ROOT/category-ladder/dist/." "$HOST:$STAGING_ROOT/category/"
 scp -i "$SSH_KEY" -r "$CODE_ROOT/claude-ladder/dist/." "$HOST:$STAGING_ROOT/claude/"
-ssh -i "$SSH_KEY" "$HOST" "rm -rf '$PREVIOUS_ROOT'; test ! -e '$REMOTE_ROOT' || mv '$REMOTE_ROOT' '$PREVIOUS_ROOT'; mv '$STAGING_ROOT' '$REMOTE_ROOT'; launchctl kickstart -k gui/\$(id -u)/com.brianmills.learning-hub"
+ssh -i "$SSH_KEY" "$HOST" "rm -rf '$PREVIOUS_ROOT'; test ! -e '$REMOTE_ROOT' || mv '$REMOTE_ROOT' '$PREVIOUS_ROOT'; mv '$STAGING_ROOT' '$REMOTE_ROOT'; launchctl bootout gui/\$(id -u)/com.brianmills.learning-hub 2>/dev/null || true; launchctl bootstrap gui/\$(id -u) /Users/b/Library/LaunchAgents/com.brianmills.learning-hub.plist; launchctl kickstart -k gui/\$(id -u)/com.brianmills.learning-hub"
 
 printf 'Deployed Learning Hub to %s\n' "$HOST"
