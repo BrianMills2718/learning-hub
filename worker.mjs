@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -11,7 +11,7 @@ mkdirSync(join(dataRoot, "artifacts"), { recursive: true });
 const db = new DatabaseSync(join(dataRoot, "learning-hub.sqlite"));
 const claim = db.prepare("UPDATE briefs SET status = 'generating', claimed_at = ? WHERE id = ? AND status = 'queued'");
 const next = db.prepare("SELECT * FROM briefs WHERE status = 'queued' ORDER BY created_at LIMIT 1");
-const finish = db.prepare("UPDATE briefs SET status = ?, completed_at = ?, failure_message = ?, artifact_path = ?, report_path = ? WHERE id = ?");
+const finish = db.prepare("UPDATE briefs SET status = ?, completed_at = ?, failure_message = ?, artifact_path = ?, report_path = ?, checkpoint_path = ? WHERE id = ?");
 
 function slug(value) { return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "environment"; }
 function research(brief) {
@@ -31,6 +31,8 @@ try {
   for (const source of sources) source.contentHash = `sha256:${cryptoModule.createHash("sha256").update(source.content).digest("hex")}`;
   const { baselineCurriculumGenerationPolicy, generateCurriculum } = await import(join(packageRoot, "dist/generator.js"));
   const { LlmClientCurriculumAgent } = await import(join(packageRoot, "dist/generators/llm-client.js"));
+  const { planCurriculum } = await import(join(packageRoot, "dist/planner.js"));
+  const { renderCurriculumPlanHtml } = await import(join(packageRoot, "dist/reference-renderer.js"));
   const id = `generated-${brief.id}`;
   const request = { schemaVersion: "0.2.0", id, curriculum: { id: slug(brief.title), version: "0.1.0", title: brief.title, language: "en" }, goal: { id: `${slug(brief.title)}-goal`, title: brief.outcome, description: brief.outcome, kind: "capability" }, audience: { description: `${brief.level} learners`, assumedKnowledge: [], level: brief.level }, scope: { requiredTopics: [brief.topic, brief.scope], optionalTopics: [], excludedTopics: [] }, assurance: { mode: sources.length ? "source-grounded" : "model-inherent", asOf: new Date().toISOString().slice(0, 10) }, sources, constraints: [brief.sources, brief.scope] };
   const output = join(dataRoot, "artifacts", brief.id);
@@ -45,9 +47,15 @@ try {
   const reportPath = join(output, "report.json");
   writeFileSync(reportPath, `${JSON.stringify(result.report, null, 2)}\n`);
   const artifactPath = result.curriculum ? join(output, "curriculum.json") : null;
-  if (result.curriculum) writeFileSync(artifactPath, `${JSON.stringify(result.curriculum, null, 2)}\n`);
-  finish.run(result.status === "accepted" ? "generated" : "failed", new Date().toISOString(), result.status === "accepted" ? null : `Generation ended ${result.status}; private checkpoint retained for continuation.`, artifactPath, reportPath, brief.id);
+  if (result.curriculum) {
+    writeFileSync(artifactPath, `${JSON.stringify(result.curriculum, null, 2)}\n`);
+    const plan = planCurriculum(result.curriculum, { goalId: request.goal.id });
+    writeFileSync(join(output, "index.html"), renderCurriculumPlanHtml(result.curriculum, plan, { title: brief.title }));
+  }
+  finish.run(result.status === "accepted" ? "generated" : "failed", new Date().toISOString(), result.status === "accepted" ? null : `Generation ended ${result.status}; private checkpoint retained for continuation.`, artifactPath, reportPath, existsSync(checkpointPath) ? checkpointPath : null, brief.id);
 } catch (error) {
-  finish.run("failed", new Date().toISOString(), error instanceof Error ? error.message.slice(0, 2000) : "Worker failure.", null, null, brief.id);
+  const output = join(dataRoot, "artifacts", brief.id);
+  const checkpointPath = join(output, "candidate-checkpoint.json");
+  finish.run("failed", new Date().toISOString(), error instanceof Error ? error.message.slice(0, 2000) : "Worker failure.", null, join(output, "report.json"), existsSync(checkpointPath) ? checkpointPath : null, brief.id);
   throw error;
 }

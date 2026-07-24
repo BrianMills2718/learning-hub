@@ -45,6 +45,7 @@ database.exec(`
     failure_message TEXT,
     artifact_path TEXT,
     report_path TEXT,
+    checkpoint_path TEXT,
     FOREIGN KEY(username) REFERENCES profiles(username)
   );
   CREATE INDEX IF NOT EXISTS briefs_by_username_created_at ON briefs(username, created_at DESC);
@@ -55,6 +56,7 @@ for (const column of [
   "failure_message TEXT",
   "artifact_path TEXT",
   "report_path TEXT",
+  "checkpoint_path TEXT",
 ]) {
   try {
     database.exec(`ALTER TABLE briefs ADD COLUMN ${column}`);
@@ -76,7 +78,7 @@ const upsertProfile = database.prepare(`
 `);
 const selectBriefs = database.prepare(`
   SELECT id, username, created_at, title, topic, level, visibility, outcome, sources, scope,
-         research_enabled, status, claimed_at, completed_at, failure_message, artifact_path, report_path
+         research_enabled, status, claimed_at, completed_at, failure_message, artifact_path, report_path, checkpoint_path
   FROM briefs WHERE username = ? ORDER BY created_at DESC
 `);
 const insertBrief = database.prepare(`
@@ -87,7 +89,7 @@ const insertBrief = database.prepare(`
 `);
 const selectBrief = database.prepare(`
   SELECT id, username, created_at, title, topic, level, visibility, outcome, sources, scope,
-         research_enabled, status, claimed_at, completed_at, failure_message, artifact_path, report_path
+         research_enabled, status, claimed_at, completed_at, failure_message, artifact_path, report_path, checkpoint_path
   FROM briefs WHERE id = ?
 `);
 const retryBrief = database.prepare(`
@@ -150,6 +152,8 @@ function briefResponse(brief) {
     failureMessage: brief.failure_message,
     artifactPath: brief.artifact_path,
     reportPath: brief.report_path,
+    resumeAvailable: brief.status === "failed" && Boolean(brief.checkpoint_path && existsSync(brief.checkpoint_path)),
+    generatedUrl: brief.status === "generated" ? `/generated/${brief.id}/` : null,
   };
 }
 
@@ -183,6 +187,36 @@ function serveStatic(pathname, response) {
     console.error(error);
     return text(response, 500, "Unable to read the requested file.");
   }
+}
+
+function serveGenerated(pathname, response) {
+  const match = pathname.match(/^\/generated\/([a-f0-9-]+)\/(.*)$/);
+  if (!match) return false;
+  const [, id, requested] = match;
+  const artifactRoot = resolve(DATA_ROOT, "artifacts", id);
+  const filePath = resolve(artifactRoot, requested || "index.html");
+  if (relative(artifactRoot, filePath).startsWith("..")) {
+    text(response, 403, "Forbidden");
+    return true;
+  }
+  try {
+    if (!statSync(filePath).isFile()) {
+      text(response, 404, "Generated page not found");
+      return true;
+    }
+    response.writeHead(200, {
+      "content-type": MIME_TYPES.get(extname(filePath)) ?? "application/octet-stream",
+      "cache-control": "no-cache",
+    });
+    response.end(readFileSync(filePath));
+  } catch (error) {
+    if (error?.code === "ENOENT") text(response, 404, "Generated page not found");
+    else {
+      console.error(error);
+      text(response, 500, "Unable to read the generated page.");
+    }
+  }
+  return true;
 }
 
 async function handleApi(request, response, url) {
@@ -219,7 +253,7 @@ async function handleApi(request, response, url) {
     const brief = selectBrief.get(retryMatch[1]);
     if (!brief) return json(response, 404, { error: "Brief not found." });
     if (brief.status !== "failed") return json(response, 409, { error: "Only failed requests can be retried." });
-    if (!brief.artifact_path || !existsSync(join(dirname(brief.artifact_path), "candidate-checkpoint.json"))) {
+    if (!brief.checkpoint_path || !existsSync(brief.checkpoint_path)) {
       return json(response, 409, { error: "This failed request has no private candidate checkpoint to resume." });
     }
     retryBrief.run(brief.id);
@@ -260,6 +294,7 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? HOST}`);
   try {
     if (url.pathname.startsWith("/api/")) return await handleApi(request, response, url);
+    if (serveGenerated(url.pathname, response)) return;
     return serveStatic(url.pathname, response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error.";

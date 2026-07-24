@@ -1,8 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const dataRoot = await mkdtemp(join(tmpdir(), "learning-hub-check-"));
@@ -71,6 +72,28 @@ try {
   const listed = await request("/api/profiles/Test%20Learner/briefs");
   if (listed.status !== 200 || listed.body.briefs.length !== 1 || listed.body.briefs[0].id !== brief.body.brief.id) {
     throw new Error("Persisted creation request was not returned by the profile API.");
+  }
+
+  const artifactRoot = join(dataRoot, "artifacts", brief.body.brief.id);
+  const checkpointPath = join(artifactRoot, "candidate-checkpoint.json");
+  await mkdir(artifactRoot, { recursive: true });
+  await writeFile(checkpointPath, "{}\n");
+  const database = new DatabaseSync(join(dataRoot, "learning-hub.sqlite"));
+  database.prepare("UPDATE briefs SET status = 'failed', checkpoint_path = ? WHERE id = ?").run(checkpointPath, brief.body.brief.id);
+  database.close();
+
+  const retry = await request(`/api/briefs/${brief.body.brief.id}/retry`, { method: "POST" });
+  if (retry.status !== 200 || retry.body.brief.status !== "queued" || retry.body.resumedFromCheckpoint !== true) {
+    throw new Error("Checkpoint continuation did not return the request to the queue.");
+  }
+
+  await writeFile(join(artifactRoot, "index.html"), "<h1>Generated environment</h1>\n");
+  const published = new DatabaseSync(join(dataRoot, "learning-hub.sqlite"));
+  published.prepare("UPDATE briefs SET status = 'generated' WHERE id = ?").run(brief.body.brief.id);
+  published.close();
+  const generated = await fetch(`${baseUrl}/generated/${brief.body.brief.id}/`);
+  if (generated.status !== 200 || !String(await generated.text()).includes("Generated environment")) {
+    throw new Error("Generated environment was not served from its artifact directory.");
   }
 
   console.log("Learning Hub server contract checks passed.");
