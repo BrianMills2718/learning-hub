@@ -8,7 +8,6 @@
   <array>
     <string>/opt/homebrew/bin/node</string>
     <string>server.mjs</string>
-    <string>/Users/b/Sites/learning-environment-pilot</string>
   </array>
   <key>WorkingDirectory</key>
   <string>/Users/b/Sites/learning-environment-pilot</string>
